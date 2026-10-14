@@ -23,7 +23,8 @@ router.put(
   validateRequest(
     z.object({
       body: z.object({
-        items: z.array(z.object({ bookId: z.number().int().positive(), quantity: z.number().int().positive() })).min(1)
+        items: z.array(z.object({ bookId: z.number().int().positive(), quantity: z.number().int().positive() }))
+          .refine((items) => new Set(items.map((item) => item.bookId)).size === items.length, "Mỗi sách chỉ được có một dòng trong giỏ")
       })
     })
   ),

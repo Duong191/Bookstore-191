@@ -39,6 +39,7 @@ import { createInventoryLogRequest, getInventoryLogsRequest } from '../api/inven
 import { getCartRequest, updateCartRequest } from '../api/cartApi';
 import { getBooks } from '../api/publicApi';
 import { bootstrapFromBackend } from '../services/dataBootstrapService';
+import { buildAdminBookPayload } from '../services/adminBookPayload';
 
 // ==============================
 // Import type dùng chung của domain bookstore
@@ -572,6 +573,10 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
   // ==============================
   const addToCart = useCallback(
     (bookId: string, quantity: number = 1) => {
+      if (!Number.isSafeInteger(Number(bookId)) || Number(bookId) <= 0) {
+        showToast('Sách này đang dùng dữ liệu dự phòng. Vui lòng tải lại cửa hàng khi kết nối Backend hoạt động.', 'error');
+        return false;
+      }
       const book = getBookById(bookId);
       if (!book) {
         showToast('Không tìm thấy sách', 'error');
@@ -780,46 +785,9 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
   const addBook = useCallback(
     async (bookData: Omit<Book, 'id' | 'createdAt'>): Promise<Book> => {
       const token = getAccessToken();
-      if (!token) throw new Error('Unauthorized');
-      const payload = bookData as unknown as Record<string, unknown>;
-      const categoryRaw = payload.categoryId ?? payload.category;
-      const categoryId = Number(categoryRaw);
-      const isbnRaw = payload.isbn;
-      const isbn = isbnRaw == null ? undefined : String(isbnRaw).trim() || undefined;
-      const publishRaw = payload.publishDate ?? payload.publishYear;
-      const publishDate =
-        publishRaw == null || publishRaw === ''
-          ? undefined
-          : String(publishRaw).match(/^\d{4}$/)
-            ? `${publishRaw}-01-01`
-            : String(publishRaw);
-      const imagesArr = Array.isArray(payload.images)
-        ? (payload.images as unknown[]).map((x) => String(x)).filter(Boolean)
-        : [];
-      const created = await createBookRequest(token, {
-        title: payload.title,
-        author: payload.author,
-        price: Number(payload.price),
-        discount: payload.discount,
-        stock: Number(payload.stock),
-        categoryId,
-        description: payload.description,
-        ...(imagesArr.length ? { image: imagesArr[0] } : {}),
-        ...(imagesArr.length ? { images: imagesArr } : {}),
-        isbn,
-        publisher: payload.publisher,
-        publishDate,
-        pages: payload.pages,
-        language: payload.language,
-        featured: payload.featured,
-        bestseller: payload.bestseller ?? payload.bestSeller,
-        trending: payload.trending,
-        isNew: payload.isNew,
-      });
-      persist((prev) => ({
-        ...prev,
-        books: [created, ...(prev.books || [])].filter(Boolean),
-      }));
+      if (!token) throw new Error('Bạn cần đăng nhập để quản lý sách');
+      const created = await createBookRequest(token, buildAdminBookPayload(bookData as unknown as Record<string, unknown>));
+      persist((prev) => ({ ...prev, books: [created, ...(prev.books || [])].filter(Boolean) }));
       return created;
     },
     [persist]
@@ -828,119 +796,14 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
   const updateBook = useCallback(
     async (bookId: string, bookData: Partial<Book>): Promise<Book | null> => {
       const token = getAccessToken();
-      if (!token) return null;
-      const payload = bookData as unknown as Record<string, unknown>;
-      const categoryRaw = payload.categoryId ?? payload.category;
-      const categoryId = categoryRaw == null || categoryRaw === '' ? undefined : Number(categoryRaw);
-      const isbnRaw = payload.isbn;
-      const isbn = isbnRaw == null ? undefined : String(isbnRaw).trim() || undefined;
-      const publishRaw = payload.publishDate ?? payload.publishYear;
-      const publishDate =
-        publishRaw == null || publishRaw === ''
-          ? undefined
-          : String(publishRaw).match(/^\d{4}$/)
-            ? `${publishRaw}-01-01`
-            : String(publishRaw);
-      try {
-        const imagesPayload = Array.isArray(payload.images)
-          ? (payload.images as unknown[]).map((x) => String(x)).filter(Boolean)
-          : undefined;
-        const updated = await updateBookRequest(token, bookId, {
-          title: payload.title,
-          author: payload.author,
-          price: payload.price == null || payload.price === '' ? undefined : Number(payload.price),
-          discount: payload.discount,
-          stock: payload.stock == null || payload.stock === '' ? undefined : Number(payload.stock),
-          categoryId,
-          description: payload.description,
-          ...(payload.image != null && payload.image !== ''
-            ? { image: payload.image }
-            : imagesPayload?.length
-              ? { image: imagesPayload[0] }
-              : {}),
-          ...(imagesPayload !== undefined ? { images: imagesPayload } : {}),
-          isbn,
-          publisher: payload.publisher,
-          publishDate,
-          pages: payload.pages,
-          language: payload.language,
-          featured: payload.featured,
-          bestseller: payload.bestseller ?? payload.bestSeller,
-          trending: payload.trending,
-          isNew: payload.isNew,
-        });
-        const imagesFromPayload = Array.isArray(payload.images)
-          ? (payload.images as unknown[]).map((x) => String(x)).filter(Boolean)
-          : undefined;
-        const tagsFromPayload = Array.isArray(payload.tags)
-          ? (payload.tags as unknown[]).map((x) => String(x)).filter(Boolean)
-          : undefined;
-        persist((prev) => ({
-          ...prev,
-          books: (prev.books || [])
-            .map((b) => {
-              if (!b || String(b.id) !== String(bookId)) return b;
-              const prevBook = b as unknown as Record<string, unknown>;
-              const updatedBook = updated as unknown as Record<string, unknown>;
-              const merged = {
-                ...prevBook,
-                ...updatedBook,
-                reviewCount:
-                  (updatedBook.reviewCount as number | undefined) ??
-                  (updatedBook.review_count as number | undefined) ??
-                  (prevBook.reviewCount as number | undefined) ??
-                  (prevBook.review_count as number | undefined) ??
-                  0,
-                soldCount:
-                  (updatedBook.soldCount as number | undefined) ??
-                  (updatedBook.sold_count as number | undefined) ??
-                  (prevBook.soldCount as number | undefined) ??
-                  (prevBook.sold_count as number | undefined) ??
-                  0,
-                reviews:
-                  (updatedBook.reviews as number | undefined) ??
-                  (updatedBook.reviewCount as number | undefined) ??
-                  (updatedBook.review_count as number | undefined) ??
-                  (prevBook.reviews as number | undefined) ??
-                  (prevBook.reviewCount as number | undefined) ??
-                  (prevBook.review_count as number | undefined) ??
-                  0,
-                salesCount:
-                  (updatedBook.salesCount as number | undefined) ??
-                  (updatedBook.soldCount as number | undefined) ??
-                  (updatedBook.sold_count as number | undefined) ??
-                  (prevBook.salesCount as number | undefined) ??
-                  (prevBook.soldCount as number | undefined) ??
-                  (prevBook.sold_count as number | undefined) ??
-                  0,
-                image: (updatedBook.image as string | undefined) || (prevBook.image as string | undefined),
-                images:
-                  imagesFromPayload ||
-                  (Array.isArray(updatedBook.images) ? (updatedBook.images as unknown[]) : undefined) ||
-                  (Array.isArray(prevBook.images) ? (prevBook.images as unknown[]) : undefined),
-                tags:
-                  tagsFromPayload ||
-                  (Array.isArray(updatedBook.tags) ? (updatedBook.tags as unknown[]) : undefined) ||
-                  (Array.isArray(prevBook.tags) ? (prevBook.tags as unknown[]) : undefined),
-                bestSeller:
-                  (updatedBook.bestSeller as boolean | undefined) ??
-                  (updatedBook.bestseller as boolean | undefined) ??
-                  (prevBook.bestSeller as boolean | undefined) ??
-                  (prevBook.bestseller as boolean | undefined) ??
-                  false,
-              };
-              return merged as unknown as Book;
-            })
-            .filter(Boolean),
-        }));
-        return updated;
-      } catch {
-        return null;
-      }
+      if (!token) throw new Error('Bạn cần đăng nhập để quản lý sách');
+      const updated = await updateBookRequest(token, bookId, buildAdminBookPayload(bookData as unknown as Record<string, unknown>));
+      // Chỉ cập nhật bằng kết quả BE xác nhận, không merge tags/ảnh chưa thực sự được lưu.
+      persist((prev) => ({ ...prev, books: (prev.books || []).map((book) => String(book.id) === String(bookId) ? updated : book) }));
+      return updated;
     },
     [persist]
   );
-
   const deleteBook = useCallback(
     async (bookId: string): Promise<boolean> => {
       const token = getAccessToken();

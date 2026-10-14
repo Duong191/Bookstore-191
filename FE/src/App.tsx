@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { BookstoreProvider } from './context/BookstoreContext';
 import MainLayout from './components/layout/MainLayout';
-import { RequireAdmin, RequireAuth } from './components/ui/ProtectedRoute';
+import { RequireAdmin, RequireAuth, RequireAccountAdmin } from './components/ui/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import ShopPage from './pages/ShopPage';
 import BookDetailPage from './pages/BookDetailPage';
@@ -21,6 +21,7 @@ import AdminOrdersPage from './pages/admin/AdminOrdersPage';
 import AdminBlogPage from './pages/admin/AdminBlogPage';
 import AdminBlogEditPage from './pages/admin/AdminBlogEditPage';
 import AdminInventoryPage from './pages/admin/AdminInventoryPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
 
 export default function App() {
   return (
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="books/new" element={<AdminBookEditPage />} />
             <Route path="books/:id/edit" element={<AdminBookEditPage />} />
             <Route path="inventory" element={<AdminInventoryPage />} />
+            <Route path="users" element={<RequireAccountAdmin><AdminUsersPage /></RequireAccountAdmin>} />
             <Route path="orders" element={<AdminOrdersPage />} />
             <Route path="blog" element={<AdminBlogPage />} />
             <Route path="blog/new" element={<AdminBlogEditPage />} />

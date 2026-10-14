@@ -8,34 +8,27 @@ import { authMiddleware } from "../middlewares/authMiddleware";
 import { checkPermission } from "../middlewares/checkPermission";
 import { validateRequest } from "../middlewares/validateRequest";
 import { asyncHandler } from "../utils/asyncHandler";
+import adminUsersRoutes from "./adminUsers.routes";
+import { bookIdSchema, createBookSchema, updateBookSchema } from "../validators/books.schemas";
 
 const router = Router();
 router.use(authMiddleware);
 router.use(checkPermission(["admin", "staff"]));
+
+// Quản lý tài khoản chỉ dành cho ADMIN, STAFF không được truy cập.
+router.use("/users", checkPermission("admin"), adminUsersRoutes);
 
 router.get("/stats", asyncHandler(adminStatsController.getAdminStats));
 
 router.post(
   "/books",
   validateRequest(
-    z.object({
-      body: z.object({
-        title: z.string().min(1),
-        author: z.string().min(1),
-        categoryId: z.number().int().positive(),
-        price: z.number().nonnegative(),
-        stock: z.number().int().nonnegative(),
-        isbn: z.string().optional(),
-        publisher: z.string().optional(),
-        publishDate: z.string().optional(),
-        description: z.string().optional()
-      })
-    })
+    z.object({ body: createBookSchema })
   ),
   asyncHandler(bookController.createBook)
 );
-router.put("/books/:id", asyncHandler(bookController.updateBook));
-router.delete("/books/:id", asyncHandler(bookController.deleteBook));
+router.put("/books/:id", validateRequest(z.object({ params: bookIdSchema, body: updateBookSchema })), asyncHandler(bookController.updateBook));
+router.delete("/books/:id", validateRequest(z.object({ params: bookIdSchema })), asyncHandler(bookController.deleteBook));
 
 router.get("/inventory/transactions", asyncHandler(inventoryController.listInventoryTransactions));
 router.get("/inventory", asyncHandler(inventoryController.listInventory));

@@ -36,6 +36,7 @@ export default function AdminLayout() {
     if (path.includes('/admin/dashboard')) return 'Dashboard';
     if (path.includes('/admin/books')) return 'Quản lý sách';
     if (path.includes('/admin/inventory')) return 'Quản lý kho';
+    if (path.includes('/admin/users')) return 'Quản lý tài khoản';
     if (path.includes('/admin/orders')) return 'Quản lý đơn hàng';
     if (path.includes('/admin/blog')) return 'Quản lý blog';
     return 'Admin';
@@ -69,6 +70,12 @@ export default function AdminLayout() {
             <i className="fas fa-warehouse"></i>
             <span>Quản lý Kho</span>
           </NavLink>
+          {currentUser?.role === 'admin' && (
+            <NavLink to="/admin/users" className="admin-nav-item">
+              <i className="fas fa-users"></i>
+              <span>Quản lý tài khoản</span>
+            </NavLink>
+          )}
           <NavLink to="/admin/blog" className="admin-nav-item">
             <i className="fas fa-blog"></i>
             <span>Quản lý Blog</span>

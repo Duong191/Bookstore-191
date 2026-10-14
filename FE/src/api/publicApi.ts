@@ -33,7 +33,9 @@ export function mapBook(raw: RawBook): Book & {
 } {
   const price = Number(raw.price ?? 0);
   const discount = Number(raw.discount ?? 0);
-  const image = String(raw.image_url ?? raw.image ?? '');
+  const images = Array.isArray(raw.images) ? raw.images.map(String).filter(Boolean)
+    : raw.image_url || raw.image ? [String(raw.image_url ?? raw.image)] : [];
+  const image = images[0] || '';
   const soldCount = Number(raw.sold_count ?? raw.soldCount ?? 0);
   const reviewCount = Number(raw.review_count ?? raw.reviewCount ?? 0);
 
@@ -68,7 +70,11 @@ export function mapBook(raw: RawBook): Book & {
     isNew: Boolean(raw.is_new ?? raw.isNew),
     reviews: reviewCount,
     salesCount: soldCount,
-    images: image ? [image] : [],
+    images,
+    tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
+    format: raw.format != null ? String(raw.format) : undefined,
+    supportsTrending: raw.supportsTrending === true,
+    supportsFormat: raw.supportsFormat === true,
     originalPrice: discount > 0 ? Math.round(price / (1 - discount / 100)) : undefined,
   };
 }

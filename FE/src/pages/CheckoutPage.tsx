@@ -1,4 +1,4 @@
-import { FormEvent, useEffect } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBookstore } from '../context/BookstoreContext';
 import { formatPrice } from '../utils/format';
@@ -7,6 +7,8 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { getCartItems, addOrder, clearCartStorage, currentUser, showToast, dedupeCartLines } = useBookstore();
   const items = getCartItems();
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     dedupeCartLines();
@@ -23,6 +25,7 @@ export default function CheckoutPage() {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     const fd = new FormData(e.currentTarget);
     const order = {
       userId: currentUser?.id || 'guest',
@@ -46,6 +49,8 @@ export default function CheckoutPage() {
       paymentMethod: fd.get('paymentMethod') as string,
     };
     try {
+      submittingRef.current = true;
+      setSubmitting(true);
       await Promise.resolve(addOrder(order));
       clearCartStorage();
       showToast('Đặt hàng thành công!', 'success');
@@ -53,6 +58,9 @@ export default function CheckoutPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể đặt hàng';
       showToast(message, 'error');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -98,8 +106,8 @@ export default function CheckoutPage() {
           </div>
           <div style={{ marginTop: 30 }}>
             <h3>Tổng cộng: {formatPrice(total)}</h3>
-            <button type="submit" className="btn btn-primary" style={{ marginTop: 20 }}>
-              Đặt hàng
+            <button type="submit" className="btn btn-primary" disabled={submitting} style={{ marginTop: 20 }}>
+              {submitting ? 'Đang đặt hàng...' : 'Đặt hàng'}
             </button>
           </div>
         </form>

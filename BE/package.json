@@ -8,6 +8,10 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "start": "ts-node-dev --respawn --transpile-only src/server.ts",
     "test:smoke": "npm run build",
+    "test:admin-users": "node --test tests/adminUsers.routes.test.cjs",
+    "test:admin-users:db": "node tests/adminUsers.integration.cjs",
+    "test:checkout:db": "node tests/checkout.integration.cjs",
+    "test:books:db": "node tests/books.integration.cjs",
     "test:db": "ts-node-dev --exit-child --transpile-only src/scripts/testDbConnection.ts",
     "seed:recovered": "ts-node-dev --exit-child --transpile-only src/scripts/applyRecoveredSeed.ts"
   },

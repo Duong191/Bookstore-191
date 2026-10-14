@@ -1,12 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, NavLink } from 'react-router-dom';
 import { useBookstore } from '../../context/BookstoreContext';
 import { formatPrice, discountedUnitPrice } from '../../utils/format';
+import { fetchBookById } from '../../api/publicApi';
 
 export default function AdminBookEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getBookById, addBook, updateBook, showToast, data } = useBookstore();
+  const { addBook, updateBook, showToast, data } = useBookstore();
+  const [loading, setLoading] = useState(!!id);
+  const [loadError, setLoadError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [capabilities, setCapabilities] = useState({ trending: false, format: true });
   const [formData, setFormData] = useState({
     title: '',
     author: '',
@@ -34,11 +41,17 @@ export default function AdminBookEditPage() {
   });
 
   const isEdit = !!id;
+  const supportsTrending = isEdit ? capabilities.trending : data?.books?.[0]?.supportsTrending === true;
+  const supportsFormat = isEdit ? capabilities.format : data?.books?.[0]?.supportsFormat !== false;
 
   useEffect(() => {
-    if (isEdit && id) {
-      const book: any = getBookById(id);
-      if (book) {
+    if (!id) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    setLoadError('');
+    fetchBookById(id).then((result) => {
+      if (cancelled) return;
+      const book: any = result;
         const imagesStr = Array.isArray(book.images) ? book.images.join(', ') : (book.image || '');
         const tagsStr = Array.isArray(book.tags) ? book.tags.join(', ') : '';
         const publishYear = book.publishYear
@@ -52,7 +65,7 @@ export default function AdminBookEditPage() {
           publisher: book.publisher || '',
           categoryId: book.categoryId || book.category || '1',
           publishYear,
-          price: String(book.price || ''),
+          price: String(book.price ?? ''),
           discount: String(book.discount || '0'),
           stock: String(book.stock || '0'),
           description: book.description || '',
@@ -61,21 +74,26 @@ export default function AdminBookEditPage() {
           isbn: book.isbn || '',
           pages: String(book.pages || ''),
           language: book.language || 'Tiếng Việt',
-          format: book.format || 'Paperback',
+          format: book.format === 'Bìa cứng' ? 'Hardcover' : book.format === 'Bìa mềm' ? 'Paperback' : book.format || 'Paperback',
           isNew: book.isNew || false,
           bestSeller: book.bestSeller || false,
           trending: book.trending || false,
           featured: book.featured || false,
-          rating: String(book.rating || '5'),
+          rating: String(book.rating ?? '5'),
           reviews: String(book.reviews || book.reviewCount || '0'),
           salesCount: String(book.salesCount || book.soldCount || '0'),
         });
-      }
-    }
-  }, [isEdit, id, getBookById]);
+      setCapabilities({ trending: book.supportsTrending === true, format: book.supportsFormat === true });
+    }).catch((error) => {
+      if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Không thể tải thông tin sách');
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (savingRef.current) return;
+    setFormError('');
     
     const imagesArray = formData.images.split(',').map(s => s.trim()).filter(Boolean);
     const tagsArray = formData.tags.split(',').map(s => s.trim()).filter(Boolean);
@@ -86,7 +104,7 @@ export default function AdminBookEditPage() {
       publisher: formData.publisher,
       categoryId: formData.categoryId,
       category: formData.categoryId,
-      publishYear: parseInt(formData.publishYear) || undefined,
+      publishYear: formData.publishYear ? parseInt(formData.publishYear) : null,
       price: parseFloat(formData.price),
       discount: parseFloat(formData.discount),
       stock: parseInt(formData.stock),
@@ -96,12 +114,12 @@ export default function AdminBookEditPage() {
       ...(imagesArray.length > 0 ? { image: imagesArray[0] } : {}),
       tags: tagsArray,
       isbn: formData.isbn,
-      pages: parseInt(formData.pages) || undefined,
+      pages: formData.pages ? parseInt(formData.pages) : null,
       language: formData.language,
-      format: formData.format,
+      ...(supportsFormat ? { format: formData.format } : {}),
       isNew: formData.isNew,
       bestSeller: formData.bestSeller,
-      trending: formData.trending,
+      ...(supportsTrending ? { trending: formData.trending } : {}),
       featured: formData.featured,
       rating: parseFloat(formData.rating),
       reviews: parseInt(formData.reviews),
@@ -110,14 +128,26 @@ export default function AdminBookEditPage() {
       soldCount: parseInt(formData.salesCount),
     };
 
-    if (isEdit && id) {
-      await Promise.resolve(updateBook(id, bookData));
-      showToast('Đã cập nhật sách', 'success');
-    } else {
-      await Promise.resolve(addBook(bookData));
-      showToast('Đã thêm sách mới', 'success');
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      if (isEdit && id) {
+        const saved = await Promise.resolve(updateBook(id, bookData));
+        if (!saved) throw new Error('Không thể cập nhật sách. Vui lòng thử lại.');
+        showToast('Đã cập nhật sách', 'success');
+      } else {
+        await Promise.resolve(addBook(bookData));
+        showToast('Đã thêm sách mới', 'success');
+      }
+      navigate('/admin/books');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể lưu sách';
+      setFormError(message);
+      showToast(message, 'error');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-    navigate('/admin/books');
   };
 
   const previewPayPrice = useMemo(() => {
@@ -127,8 +157,13 @@ export default function AdminBookEditPage() {
     return discountedUnitPrice({ price: p, discount: d });
   }, [formData.price, formData.discount]);
 
+  if (loading) return <p role="status">Đang tải thông tin sách...</p>;
+  if (loadError) return <div role="alert">{loadError} <NavLink to="/admin/books">Về danh sách sách</NavLink></div>;
+
   return (
     <form className="admin-form" onSubmit={onSubmit}>
+      {formError && <div role="alert" style={{ color: '#991b1b', background: '#fef2f2', padding: 12, marginBottom: 16 }}>{formError}</div>}
+      <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {/* Basic Info */}
       <div className="form-group">
         <label className="form-label required">Tên sách</label>
@@ -320,6 +355,7 @@ export default function AdminBookEditPage() {
           <select
             className="form-select"
             value={formData.format}
+            disabled={!supportsFormat}
             onChange={(e) => setFormData({ ...formData, format: e.target.value })}
           >
             <option value="Paperback">Bìa mềm</option>
@@ -364,9 +400,10 @@ export default function AdminBookEditPage() {
             <input
               type="checkbox"
               checked={formData.trending}
+              disabled={!supportsTrending}
               onChange={(e) => setFormData({ ...formData, trending: e.target.checked })}
             />
-            <span>Xu hướng</span>
+            <span>Xu hướng{!supportsTrending ? ' (chưa hỗ trợ)' : ''}</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input
@@ -421,10 +458,11 @@ export default function AdminBookEditPage() {
         <NavLink to="/admin/books" className="btn-admin btn-admin-secondary">
           <i className="fas fa-times"></i> Hủy
         </NavLink>
-        <button type="submit" className="btn-admin btn-admin-primary">
-          <i className="fas fa-save"></i> Lưu
+        <button type="submit" className="btn-admin btn-admin-primary" disabled={saving}>
+          <i className="fas fa-save"></i> {saving ? 'Đang lưu...' : 'Lưu'}
         </button>
       </div>
+      </fieldset>
     </form>
   );
 }

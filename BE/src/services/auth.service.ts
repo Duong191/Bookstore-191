@@ -1,5 +1,6 @@
 /** File này xử lý nghiệp vụ xác thực: đăng ký, đăng nhập và refresh token. */
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 import { getDb, sql } from "../config/db";
 import { BCRYPT_HASH_DEV_PASSWORD_1 } from "../config/defaultPasswordHash";
 import { AppError } from "../utils/appError";
@@ -18,6 +19,21 @@ type RegisterInput = {
 
 const DEFAULT_ADMIN_EMAIL = "admin@bookstore.com";
 const REFRESH_TOKEN_DB_MAX_LEN = 1000;
+
+/** Hỗ trợ schema mới (token_hash) và schema cũ (token). */
+const getRefreshTokenStorage = async (token: string) => {
+  const pool = await getDb();
+  const result = await pool.request().query(`
+    SELECT name FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'refresh_tokens') AND name IN (N'token_hash', N'token')
+  `);
+  const columns = result.recordset.map((row: { name: string }) => row.name);
+  if (columns.includes("token_hash")) {
+    return { column: "token_hash" as const, value: createHash("sha256").update(token).digest("hex") };
+  }
+  if (columns.includes("token")) return { column: "token" as const, value: token };
+  throw new Error("refresh_tokens must have a token_hash or token column");
+};
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
@@ -41,14 +57,15 @@ const buildLoginResult = async (userRow: Record<string, unknown>, userId: number
   const payload = buildTokenPayload(auth);
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
+  const storage = await getRefreshTokenStorage(refreshToken);
 
   const pool = await getDb();
   await pool
     .request()
     .input("userId", sql.BigInt, userId)
-    .input("token", sql.NVarChar(REFRESH_TOKEN_DB_MAX_LEN), refreshToken)
+    .input("token", sql.NVarChar(REFRESH_TOKEN_DB_MAX_LEN), storage.value)
     .input("expiresAt", sql.DateTime2, new Date(Date.now() + 7 * 24 * 3600 * 1000))
-    .query("INSERT INTO refresh_tokens (user_id, token, expires_at, created_at) VALUES (@userId, @token, @expiresAt, GETUTCDATE())");
+    .query(`INSERT INTO refresh_tokens (user_id, ${storage.column}, expires_at, created_at) VALUES (@userId, @token, @expiresAt, GETUTCDATE())`);
 
   const user = mapDbUserToFeUser({
     ...userRow,
@@ -90,6 +107,9 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     .input("email", sql.NVarChar(255), email)
     .query(`SELECT id FROM users WHERE LOWER(LTRIM(RTRIM(email))) = @email`);
 
+  // Tôn trọng quyền/khóa/xóa mềm do ADMIN quản lý; startup không khôi phục tài khoản cũ.
+  if (existing.recordset.length) return;
+
   let userId: number;
 
   if (!existing.recordset.length) {
@@ -105,13 +125,7 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     userId = Number((ins.recordset[0] as { id: number }).id);
     // eslint-disable-next-line no-console
     console.log(`[ensureDefaultAdmin] Created default admin user id=${userId}`);
-  } else {
-    userId = Number((existing.recordset[0] as { id: number }).id);
-    await pool
-      .request()
-      .input("id", sql.BigInt, userId)
-      .query(`UPDATE users SET is_active = 1, is_deleted = 0, updated_at = GETUTCDATE() WHERE id = @id`);
-  }
+  } else return;
 
   await pool
     .request()
@@ -152,7 +166,8 @@ export const register = async (input: RegisterInput) => {
     const userId = Number(userInsert.recordset[0].id);
     await new sql.Request(tx).input("userId", sql.BigInt, userId).query(
       `INSERT INTO user_roles (user_id, role_id, created_at)
-       SELECT @userId, id, GETUTCDATE() FROM roles WHERE name='user'`
+       SELECT TOP 1 @userId, id, GETUTCDATE() FROM roles WHERE name IN ('user', 'customer')
+       ORDER BY CASE WHEN name='user' THEN 0 ELSE 1 END`
     );
     await tx.commit();
     return login(email, input.password);
@@ -190,7 +205,9 @@ export const refresh = async (token: string) => {
 
 export const logout = async (token: string): Promise<void> => {
   const pool = await getDb();
-  await pool.request().input("token", sql.NVarChar(500), token).query("DELETE FROM refresh_tokens WHERE token=@token");
+  const storage = await getRefreshTokenStorage(token);
+  await pool.request().input("token", sql.NVarChar(REFRESH_TOKEN_DB_MAX_LEN), storage.value)
+    .query(`DELETE FROM refresh_tokens WHERE ${storage.column}=@token`);
 };
 
 /**

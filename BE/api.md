@@ -44,3 +44,14 @@ DELETE /api/admin/books/:id
 Admin Inventory (cần admin|staff)
 GET /api/admin/inventory
 POST /api/admin/inventory
+
+Admin Users (CHỈ admin; staff/user bị 403, không token bị 401)
+GET /api/admin/users?search=...&role=user|staff|admin&isActive=true|false&page=1&limit=20
+GET /api/admin/users/:id
+POST /api/admin/users
+PATCH /api/admin/users/:id
+PATCH /api/admin/users/:id/role
+PATCH /api/admin/users/:id/status
+DELETE /api/admin/users/:id (xóa mềm, giữ đơn hàng)
+
+Chi tiết payload/response, role customer và bảo vệ admin cuối: ../docs/09_ADMIN_USERS.md

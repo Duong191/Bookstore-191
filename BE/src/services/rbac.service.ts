@@ -25,7 +25,8 @@ export const getUserAuthData = async (userId: number) => {
   if (!result.recordset.length) return null;
 
   const rows = result.recordset as { role_name: string | null; permission_name: string | null; id: number; email: string }[];
-  const roles = Array.from(new Set(rows.map((x) => x.role_name).filter((x): x is string => Boolean(x))));
+  // Schema mới lưu customer; giữ hợp đồng user/staff/admin của FE và middleware.
+  const roles = Array.from(new Set(rows.map((x) => x.role_name === "customer" ? "user" : x.role_name).filter((x): x is string => Boolean(x))));
   const permissions = Array.from(new Set(rows.map((x) => x.permission_name).filter((x): x is string => Boolean(x))));
 
   return {

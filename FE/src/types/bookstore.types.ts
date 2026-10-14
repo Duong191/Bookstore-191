@@ -4,6 +4,25 @@
  * Context, hook, page, service có thể import type từ đây để dùng lại thống nhất.
  */
 
+export type AccountRole = 'user' | 'admin' | 'staff';
+
+/** Hồ sơ quản trị trả từ API; không chứa password/hash/token. */
+export interface AdminUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  phone: string;
+  gender: string | null;
+  birthDate: string | null;
+  avatarUrl: string | null;
+  role: AccountRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -18,7 +37,7 @@ export interface User {
     month: string;
     year: string;
   };
-  role: 'user' | 'admin' | 'staff';
+  role: AccountRole;
 
   /** RBAC: từ API login / users/me khi backend trả về */
   roles?: string[];
@@ -47,6 +66,11 @@ export interface Book {
   categoryId: string;
   description: string;
   image: string;
+  images?: string[];
+  tags?: string[];
+  format?: string;
+  supportsTrending?: boolean;
+  supportsFormat?: boolean;
   isbn?: string;
   publisher?: string;
   publishDate?: string;

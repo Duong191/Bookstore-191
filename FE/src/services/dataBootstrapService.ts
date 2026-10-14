@@ -8,25 +8,6 @@ type LocalRecoveredPayload = {
   books?: Array<Record<string, unknown>>;
 };
 
-function normalizeKey(value: string): string {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[đĐ]/g, (ch) => (ch === 'đ' ? 'd' : 'D'))
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/** Nhận diện URL ảnh kém chất lượng để thay bằng nguồn recovered. */
-function isBadImagePath(path?: string): boolean {
-  const p = String(path || '').trim().toLowerCase();
-  if (!p) return true;
-  if (p.includes('placehold.co')) return true;
-  if (p.startsWith('/images/books/')) return true;
-  return false;
-}
-
 /** Tạo detailed categories fallback khi API chưa có dữ liệu đầy đủ. */
 function buildFallbackDetailedCategories(categories: Category[]): DetailedCategory[] {
   const fallbackSubsBySlug: Record<string, string[]> = {
@@ -144,38 +125,6 @@ async function loadRecoveredLocalData(): Promise<{
   }
 }
 
-/** Bù ảnh tốt từ recovered vào sách API có ảnh lỗi/placeholder. */
-function enrichBooksWithRecoveredImages(apiBooks: Book[], recoveredBooks: Book[]): Book[] {
-  const byIsbn = new Map<string, Book>();
-  const byTitle = new Map<string, Book>();
-
-  for (const rb of recoveredBooks) {
-    if (rb.isbn) byIsbn.set(normalizeKey(String(rb.isbn)), rb);
-    byTitle.set(normalizeKey(String(rb.title)), rb);
-  }
-
-  return apiBooks.map((book) => {
-    const fromIsbn = book.isbn ? byIsbn.get(normalizeKey(String(book.isbn))) : undefined;
-    const fromTitle = byTitle.get(normalizeKey(String(book.title)));
-    const fallback = fromIsbn || fromTitle;
-    if (!fallback) return book;
-
-    const fallbackImages = (fallback as Book & { images?: string[] }).images || [];
-    const fallbackImage = fallbackImages[0] || fallback.image;
-    if (!fallbackImage) return book;
-
-    const currentImages = (book as Book & { images?: string[] }).images || [];
-    const currentImage = currentImages[0] || book.image;
-    if (!isBadImagePath(currentImage)) return book;
-
-    return {
-      ...(book as Book & { images?: string[] }),
-      image: fallbackImage,
-      images: fallbackImages.length ? fallbackImages : [fallbackImage],
-    };
-  });
-}
-
 /** Bootstrap catalog: ưu tiên API, fallback recovered khi cần. */
 export async function bootstrapFromBackend(): Promise<BookstoreData | null> {
   try {
@@ -207,7 +156,8 @@ export async function bootstrapFromBackend(): Promise<BookstoreData | null> {
       }
     }
 
-    const mergedBooks = recovered ? enrichBooksWithRecoveredImages(books, recovered.books) : books;
+    // Ảnh/tags từ API là dữ liệu đã lưu; không ghi đè bằng ảnh seed, kể cả khi admin xóa hết ảnh.
+    const mergedBooks = books;
 
     return {
       users: [],

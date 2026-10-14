@@ -20,6 +20,12 @@
 
 ## RBAC mapping
 
+- Admin account management: `GET/POST /api/admin/users`, `GET/PATCH/DELETE /api/admin/users/:id`,
+  `PATCH /api/admin/users/:id/role`, `PATCH /api/admin/users/:id/status` -> `users`, `roles`, `user_roles`, `refresh_tokens`.
+- Only role `admin` can access this group. Mutations use a transaction-owned SQL application lock and protect the last active admin.
+- API role `user` maps to DB role `user` when available, otherwise `customer`; authentication normalizes `customer` to `user`.
+- Soft deletion keeps the user row and existing orders. No password/hash/token appears in admin account responses.
+
 - `roles`, `permissions`, `user_roles`, `role_permissions`
 - Middleware `checkPermission()` checks both role aliases (`admin`, `staff`) and permission keys (e.g. `orders.update`)
 

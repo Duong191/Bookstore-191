@@ -1,5 +1,6 @@
 /** File này ký và kiểm tra access/refresh token JWT. */
 import jwt from "jsonwebtoken";
+import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { TokenPayload } from "../types";
 import { AppError } from "./appError";
@@ -8,7 +9,10 @@ export const signAccessToken = (payload: TokenPayload): string =>
   jwt.sign(payload, env.jwt.accessSecret, { expiresIn: env.jwt.accessExpiresIn as jwt.SignOptions["expiresIn"] });
 
 export const signRefreshToken = (payload: TokenPayload): string =>
-  jwt.sign(payload, env.jwt.refreshSecret, { expiresIn: env.jwt.refreshExpiresIn as jwt.SignOptions["expiresIn"] });
+  jwt.sign(payload, env.jwt.refreshSecret, {
+    expiresIn: env.jwt.refreshExpiresIn as jwt.SignOptions["expiresIn"],
+    jwtid: randomUUID()
+  });
 
 export const verifyAccessToken = (token: string): TokenPayload => {
   try {
