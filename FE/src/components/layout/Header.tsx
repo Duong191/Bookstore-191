@@ -22,7 +22,7 @@ export default function Header({ topBarVariant = 'default' }: HeaderProps) {
     setSearch(q ?? '');
   }, [location.pathname, location.search, searchParams]);
 
-  const detailed = data?.detailedCategories || [];
+  const detailed = useMemo(() => data?.detailedCategories || [], [data?.detailedCategories]);
   
   const pendingOrdersCount = useMemo(() => {
     return (data?.orders || []).filter(order => order.status === 'pending').length;
@@ -33,47 +33,7 @@ export default function Header({ topBarVariant = 'default' }: HeaderProps) {
     return [0, 1, 2, 3].map((i) => detailed.slice(i * per, i * per + per));
   }, [detailed]);
 
-  const fallbackSubsByCategory: Record<string, string[]> = {
-    'khoa hoc': [
-      'Khoa học thường thức',
-      'Khám phá vũ trụ',
-      'Sinh học - Y học',
-      'Môi trường - Trái đất',
-    ],
-  };
-
-  const getCategorySubs = (category: { name: string; id: string; subCategories?: { name: string; link: string }[] }) => {
-    const existing = (category.subCategories || []).slice(0, 4);
-    if (existing.length >= 4) return existing;
-
-    const normalizedName = String(category.name || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[đĐ]/g, (ch) => (ch === 'đ' ? 'd' : 'D'))
-      .toLowerCase()
-      .trim();
-    const fallbackNames = fallbackSubsByCategory[normalizedName] || [];
-    const fallbackSubs = fallbackNames.map((name) => ({
-      name,
-      link: `/shop?category=${encodeURIComponent(String(category.id))}&sub=${encodeURIComponent(
-        name
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[đĐ]/g, (ch) => (ch === 'đ' ? 'd' : 'D'))
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '')
-      )}`,
-    }));
-
-    const merged = [...existing];
-    for (const item of fallbackSubs) {
-      if (merged.length >= 4) break;
-      if (!merged.some((x) => x.name === item.name)) merged.push(item);
-    }
-    return merged;
-  };
-
+  const getCategorySubs = (category: { subCategories?: { name: string; link: string }[] }) => category.subCategories || [];
   /** Giỏ hàng storefront: ẩn với admin/staff; hiển thị với khách và khách hàng (role user). */
   const showStorefrontCart =
     !currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'staff');

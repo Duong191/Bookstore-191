@@ -36,14 +36,11 @@ function hasAnyKeyword(value: unknown, keywords: string[]): boolean {
 }
 
 function isMangaComicBook(book: BookWithExtras): boolean {
-  const categoryId = String((book as any).category ?? book.categoryId ?? '');
   const categoryName = String((book as any).categoryName ?? '');
   const title = String(book.title || '');
   const imageRaw = String(book.images?.[0] || book.image || '');
   const tags = Array.isArray(book.tags) ? book.tags.map((t) => String(t)) : [];
   const tagText = tags.join(' ');
-
-  if (categoryId === '9') return true;
   if (hasAnyKeyword(categoryName, ['manga', 'comic'])) return true;
   if (hasAnyKeyword(tagText, ['manga', 'comic'])) return true;
   if (imageRaw.toLowerCase().includes('/manga-comic/')) return true;
@@ -53,12 +50,9 @@ function isMangaComicBook(book: BookWithExtras): boolean {
 }
 
 function isThieuNhiBook(book: BookWithExtras): boolean {
-  const categoryId = String((book as any).category ?? book.categoryId ?? '');
   const categoryName = String((book as any).categoryName ?? '');
   const tags = Array.isArray(book.tags) ? book.tags.map((t) => String(t)) : [];
   const tagText = tags.join(' ');
-
-  if (categoryId === '5') return true;
   if (hasAnyKeyword(categoryName, ['thieu nhi', 'thiếu nhi'])) return true;
   if (hasAnyKeyword(tagText, ['thieu nhi', 'thiếu nhi'])) return true;
   return false;
@@ -112,7 +106,7 @@ function RankingPreviewDetailPanel({ book }: { book: BookWithExtras }) {
 }
 
 export default function HomePage() {
-  const { books: baseBooks, loading } = useBooks();
+  const { books: baseBooks, loading,categories } = useBooks();
   const { addToCart } = useCart();
   const books = baseBooks as BookWithExtras[];
 
@@ -142,27 +136,17 @@ export default function HomePage() {
     () => books.filter((b) => isMangaComicBook(b) || isThieuNhiBook(b)),
     [books]
   );
-  const [comicTab, setComicTab] = useState('manga-comic');
-  const [comicPage, setComicPage] = useState(0);
-  const comicFiltered = useMemo(() => {
-    if (comicTab === 'manga-comic') {
-      return comicsAll.filter((b) => isMangaComicBook(b));
-    }
-    if (comicTab === 'truyen-thieu-nhi') {
-      return comicsAll.filter((b) => {
-        if (isMangaComicBook(b)) return false;
-        return isThieuNhiBook(b);
-      });
-    }
-    return comicsAll;
-  }, [comicsAll, comicTab]);
+  const [comicTab,setComicTab]=useState('all');
+  const [comicPage,setComicPage]=useState(0);
+  const comicTabs=[{id:'all',label:'Tất cả'},...categories.filter(c=>comicsAll.some(b=>String(b.categoryId)===c.id)).map(c=>({id:c.id,label:c.name}))];
+  const comicFiltered=useMemo(()=>comicTab==='all'?comicsAll:comicsAll.filter(b=>String(b.categoryId)===comicTab),[comicsAll,comicTab]);
   const comicPages = Math.max(1, Math.ceil(comicFiltered.length / PER));
 
   /** Tab danh mục cho bảng xếp hạng (id category khớp backend / booksService). */
-  const [rankCat, setRankCat] = useState('1');
+  const [rankCat, setRankCat] = useState('all');
 
   /** Top 5 sách bán chạy theo category — từ context, không fetch thêm. */
-  const rankingPreview = useMemo(() => getBestSellersByCategory(books, rankCat).slice(0, 5), [books, rankCat]);
+  const rankingPreview = useMemo(() => getBestSellersByCategory(books, rankCat,categories).slice(0, 5), [books, rankCat,categories]);
   
   /**
    * Id sách đang được hover ở cột trái; `null` = coi như chọn mặc định **hạng 1** (xem activeRankBook).
@@ -182,41 +166,12 @@ export default function HomePage() {
     return rankingPreview.find((b) => String(b.id) === String(id)) ?? rankingPreview[0];
   }, [rankingPreview, activeRankBookId]);
 
-  const foreignAll = useMemo(
-    () =>
-      books.filter((b) => {
-        const categoryId = String((b as any).category ?? b.categoryId ?? '');
-        const categoryName = String((b as any).categoryName ?? '').toLowerCase();
-        return (
-          categoryId === '6' ||
-          categoryName.includes('ngoại ngữ') ||
-          categoryName.includes('ngoai ngu') ||
-          categoryName.includes('foreign')
-        );
-      }),
-    [books]
-  );
-  const [foreignTab, setForeignTab] = useState('english');
-  const [foreignPage, setForeignPage] = useState(0);
-  const foreignFiltered = useMemo(() => {
-    const kw: Record<string, string[]> = {
-      chinese: ['tiếng trung', 'tieng trung', 'chinese', 'hsk', 'trung quốc', 'trung quoc', '中文', '汉语'],
-      japanese: ['tiếng nhật', 'tieng nhat', 'japanese', 'jlpt', 'n5', 'n4', 'n3', 'n2', 'n1', '日本語'],
-      korean: ['tiếng hàn', 'tieng han', 'korean', 'topik', '한국어'],
-      english: ['tiếng anh', 'tieng anh', 'english', 'ielts', 'toeic', 'toefl'],
-    };
-    const keywords = kw[foreignTab] || [];
-    return foreignAll.filter((book) => {
-      const lang = String(book.language || '').toLowerCase();
-      const tags = Array.isArray(book.tags) ? book.tags.map((t) => String(t).toLowerCase()) : [];
-      const title = String(book.title || '').toLowerCase();
-      const publisher = String(book.publisher || '').toLowerCase();
-      const description = String(book.description || '').toLowerCase();
-      const categoryName = String((book as any).categoryName || '').toLowerCase();
-      const haystack = `${lang} ${title} ${publisher} ${description} ${categoryName}`;
-      return keywords.some((k) => haystack.includes(k) || tags.some((t) => t.includes(k)));
-    });
-  }, [foreignAll, foreignTab]);
+  const foreignAll=useMemo(()=>books.filter(b=>hasAnyKeyword([b.language,(b as any).categoryName,...(b.tags||[])].join(' '),
+    ['ngoại ngữ','tiếng anh','tiếng nhật','tiếng trung','english','japanese','chinese'])),[books]);
+  const [foreignTab,setForeignTab]=useState('all');
+  const [foreignPage,setForeignPage]=useState(0);
+  const foreignTabs=[{id:'all',label:'Tất cả'},...categories.filter(c=>foreignAll.some(b=>String(b.categoryId)===c.id)).map(c=>({id:c.id,label:c.name}))];
+  const foreignFiltered=useMemo(()=>foreignTab==='all'?foreignAll:foreignAll.filter(b=>String(b.categoryId)===foreignTab),[foreignAll,foreignTab]);
   const foreignPages = Math.max(1, Math.ceil(foreignFiltered.length / PER));
 
   const recommendations = useMemo(() => {
@@ -340,30 +295,9 @@ export default function HomePage() {
           <div className="section-header comic-section-header">
             <h2>Truyện Tranh</h2>
           </div>
-          <div className="comic-tabs-wrapper">
-            <div className="swiper-wrapper">
-              <button
-                type="button"
-                className={`comic-tab-btn ${comicTab === 'manga-comic' ? 'active' : ''}`}
-                onClick={() => {
-                  setComicTab('manga-comic');
-                  setComicPage(0);
-                }}
-              >
-                Manga - Comic
-              </button>
-              <button
-                type="button"
-                className={`comic-tab-btn ${comicTab === 'truyen-thieu-nhi' ? 'active' : ''}`}
-                onClick={() => {
-                  setComicTab('truyen-thieu-nhi');
-                  setComicPage(0);
-                }}
-              >
-                Truyện Thiếu Nhi
-              </button>
-            </div>
-          </div>
+          <div className="comic-tabs-wrapper"><div className="swiper-wrapper">
+  {comicTabs.map(t=><button key={t.id} type="button" className={`comic-tab-btn ${comicTab===t.id?'active':''}`} onClick={()=>{setComicTab(t.id);setComicPage(0);}}>{t.label}</button>)}
+</div></div>
           <div className="featured-books-carousel">
             <button
               type="button"
@@ -396,7 +330,7 @@ export default function HomePage() {
             </button>
           </div>
           <div className="view-more-container">
-            <NavLink to={comicTab === 'manga-comic' ? '/shop?category=9' : '/shop?category=5'} className="view-more-btn">
+            <NavLink to={comicTab==='all'?'/shop':`/shop?category=${comicTab}`} className="view-more-btn">
               Xem Thêm
             </NavLink>
           </div>
@@ -415,13 +349,7 @@ export default function HomePage() {
           </div>
           <div className="ranking-preview-tabs-wrapper">
             <div className="ranking-preview-tabs">
-              {[
-                { id: '1', label: 'Văn học' },
-                { id: '2', label: 'Kinh Tế' },
-                { id: '7', label: 'Tâm lý - Kỹ năng sống' },
-                { id: '5', label: 'Thiếu nhi' },
-                { id: '6', label: 'Sách học ngoại ngữ' },
-              ].map((t) => (
+              {[{id: 'all',label: 'Tất cả'},...categories.filter(c=>!c.parentId).map(c=>({id:c.id,label:c.name}))].map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -519,12 +447,7 @@ export default function HomePage() {
           </div>
           <div className="comic-tabs-wrapper">
             <div className="swiper-wrapper">
-              {[
-                { id: 'english', label: 'Sách tiếng Anh' },
-                { id: 'chinese', label: 'Sách tiếng Trung' },
-                { id: 'japanese', label: 'Sách tiếng Nhật' },
-                { id: 'korean', label: 'Sách tiếng Hàn' },
-              ].map((t) => (
+              {foreignTabs.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -571,7 +494,7 @@ export default function HomePage() {
             </button>
           </div>
           <div className="view-more-container">
-            <NavLink to="/shop?category=6" className="view-more-btn">
+            <NavLink to={foreignTab==='all'?'/shop':`/shop?category=${foreignTab}`} className="view-more-btn">
               Xem Thêm
             </NavLink>
           </div>

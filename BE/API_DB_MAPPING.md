@@ -9,14 +9,16 @@
 - `GET/PATCH /api/users/me` -> `users`
 - `GET /api/books`, `GET /api/books/:id` -> `books`, `categories`
 - `GET /api/categories` -> `categories`
-- `GET /api/categories/detailed` -> `v_category_performance`
+- `GET /api/categories/detailed` -> `categories`, `books` (cây cha/con và link DB, chỉ danh mục đang hiển thị)
 - `GET/PUT /api/cart` -> `carts`, `cart_items`, `books`
-- `POST /api/orders` -> `sp_create_order` (transaction: order + stock + inventory)
+- `POST /api/orders` -> schema mới `sp_CreateOrder`, legacy `sp_create_order` (transaction: order + stock + inventory)
 - `GET /api/orders` -> `orders`
-- `PATCH /api/orders/:id/status` -> `sp_update_order_status` (transaction + rollback stock on cancel)
-- `GET /api/admin/inventory` -> `v_inventory_summary`
-- `POST /api/admin/inventory` -> `sp_inventory_transaction`
-- `POST/PUT/DELETE /api/admin/books` -> `books`
+- `PATCH /api/orders/:id/status` -> schema mới `sp_UpdateOrderStatus`, legacy `sp_update_order_status` (transaction + rollback stock on cancel)
+- `GET /api/admin/inventory` -> schema mới `books`, `categories`, `inventory_transactions`; legacy `v_inventory_summary`
+- `POST /api/admin/inventory` -> schema mới `sp_AdjustInventory`; legacy `sp_inventory_transaction`
+- `GET/POST/PUT/DELETE /api/admin/books`, `PATCH /api/admin/books/:id/status` -> `books`, `categories`, `book_images`, `book_tags`, `tags` (schema mới); legacy lưu tags trực tiếp trong `book_tags`. Kho khởi tạo -> `inventory_transactions`.
+- `GET/POST/PATCH/DELETE /api/admin/categories` -> `categories`, `books` (đếm sách và bảo vệ xóa). Soft-delete fields thêm bằng `category-management-compatibility.sql`.
+- Public books/categories và cart/checkout kiểm tra trạng thái sách, danh mục và cha. Cây danh mục hai cấp; chi tiết tại `../docs/12_ADMIN_CATALOG.md`.
 
 ## RBAC mapping
 

@@ -64,3 +64,17 @@ export async function deleteBookRequest(token: string, bookId: string): Promise<
     token,
   });
 }
+export interface AdminBooksParams {search?:string;parentCategoryId?:string;categoryId?:string;status?:string;stock?:string;sort?:string;page?:number;limit?:number}
+export async function getAdminBooksRequest(token:string,params:AdminBooksParams={}){
+  const query=new URLSearchParams();Object.entries(params).forEach(([key,value])=>{if(value!==undefined&&value!=='')query.set(key,String(value));});
+  const response=await httpRequest<{data:RawBook[];meta:{page:number;limit:number;total:number}}>(`/admin/books?${query}`,{token});
+  return {items:response.data.map(mapBook),meta:response.meta};
+}
+export async function getAllAdminBooksRequest(token:string){
+  const items:Book[]=[];for(let page=1;page<=10000;page++){
+    const response=await getAdminBooksRequest(token,{page,limit:100});items.push(...response.items);
+    if(!response.items.length||items.length>=response.meta.total)break;
+  }return items;
+}
+export async function getAdminBookDetailRequest(token:string,id:string){return mapBook(await httpRequest<RawBook>(`/admin/books/${encodeURIComponent(id)}`,{token}));}
+export async function updateAdminBookStatusRequest(token:string,id:string,isActive:boolean){return mapBook(await httpRequest<RawBook>(`/admin/books/${encodeURIComponent(id)}/status`,{token,method:'PATCH',body:JSON.stringify({isActive})}));}

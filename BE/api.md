@@ -38,9 +38,20 @@ POST /api/blogs (cần admin|staff)
 PUT /api/blogs/:id (cần admin|staff)
 DELETE /api/blogs/:id (cần admin|staff)
 Admin Books (cần admin|staff)
+GET /api/admin/books?search=...&parentCategoryId=...&categoryId=...&status=all|active|inactive&stock=all|in-stock|out-of-stock|low-stock&sort=newest&page=1&limit=20
+GET /api/admin/books/:id (đọc cả sách ẩn)
 POST /api/admin/books
 PUT /api/admin/books/:id
+PATCH /api/admin/books/:id/status
 DELETE /api/admin/books/:id
+Admin Categories (đọc: admin|staff; ghi: chỉ admin)
+GET /api/admin/categories?tree=true|false
+GET /api/admin/categories/:id
+POST /api/admin/categories
+PATCH /api/admin/categories/:id
+PATCH /api/admin/categories/:id/status
+DELETE /api/admin/categories/:id (xóa mềm, chặn khi có sách/con active)
+Chi tiết quy tắc, migration và kiểm thử: ../docs/12_ADMIN_CATALOG.md
 Admin Inventory (cần admin|staff)
 GET /api/admin/inventory
 POST /api/admin/inventory

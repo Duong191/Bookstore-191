@@ -1,6 +1,8 @@
 /** File này xử lý nghiệp vụ tồn kho và giao dịch kho. */
 import { getDb, sql } from "../config/db";
 import { parsePagination } from "../utils/pagination";
+import {usesRebuiltStoreSchema} from '../utils/storeSchema';
+import {AppError} from '../utils/appError';
 
 export type InventoryTransactionItem = {
   id: string;
@@ -21,8 +23,8 @@ const mapInventoryTransactionRow = (row: Record<string, unknown>): InventoryTran
 
   let uiType: "import" | "export" = "import";
   if (rawType === "import") uiType = "import";
-  else if (rawType === "export" || rawType === "order") uiType = "export";
-  else if (rawType === "adjustment") uiType = qty < 0 ? "export" : "import";
+  else if (rawType === "export" || rawType === "order" ||rawType==='sale') uiType = "export";
+  else if (rawType === "adjustment"||rawType==='cancel_restore'||rawType==='return') uiType = qty < 0 ? "export" : "import";
 
   let createdIso: string;
   const ca = row.created_at as Date | string | undefined;
@@ -63,12 +65,13 @@ export const listInventoryTransactions = async (
   const offset = (page - 1) * limit;
 
   const pool = await getDb();
+  const rebuilt=await usesRebuiltStoreSchema();
   const rs = await pool
     .request()
     .input("limit", sql.Int, limit)
     .input("offset", sql.Int, offset)
     .query(
-      `SELECT it.id, it.book_id, it.transaction_type, it.quantity, it.import_price, it.note,
+      `SELECT it.id, it.book_id, it.transaction_type, ${rebuilt?'it.quantity_delta AS quantity,it.unit_cost AS import_price':'it.quantity,it.import_price'}, it.note,
               it.created_by, it.created_at,
               u.first_name AS creator_first_name, u.last_name AS creator_last_name
        FROM inventory_transactions it
@@ -93,6 +96,19 @@ export const listInventory = async (query: Record<string, unknown>) => {
   const { page, limit, offset } = parsePagination(query);
   const search = String(query.search ?? "").trim();
   const pool = await getDb();
+  if(await usesRebuiltStoreSchema()){
+    const rs=await pool.request().input('search',sql.NVarChar(255),search?`%${search}%`:null).input('limit',sql.Int,limit).input('offset',sql.Int,offset)
+      .query(`SELECT b.id,b.title,b.author,b.stock_quantity AS current_stock,b.price AS selling_price,cost.unit_cost AS import_price,
+        b.stock_quantity*COALESCE(cost.unit_cost,0) AS stock_value,
+        c.name AS category_name,(SELECT COALESCE(SUM(it.quantity_delta),0) FROM inventory_transactions it WHERE it.book_id=b.id AND it.transaction_type='import') AS total_imported
+        FROM books b JOIN categories c ON c.id=b.category_id OUTER APPLY
+          (SELECT TOP 1 it.unit_cost FROM inventory_transactions it WHERE it.book_id=b.id AND it.unit_cost IS NOT NULL ORDER BY it.created_at DESC,it.id DESC) cost
+        WHERE b.is_deleted=0 AND (@search IS NULL OR b.title LIKE @search OR b.author LIKE @search)
+        ORDER BY b.stock_quantity,b.id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;
+        SELECT COUNT(*) AS total FROM books WHERE is_deleted=0 AND (@search IS NULL OR title LIKE @search OR author LIKE @search);`);
+    const sets=rs.recordsets as unknown as Array<Array<Record<string,unknown>>>;
+    return {data:sets[0],meta:{page,limit,total:Number(sets[1][0].total)}};
+  }
   const rs = await pool
     .request()
     .input("search", sql.NVarChar(255), search ? `%${search}%` : null)
@@ -101,7 +117,7 @@ export const listInventory = async (query: Record<string, unknown>) => {
     .query(
       `SELECT * FROM v_inventory_summary
        WHERE @search IS NULL OR title LIKE @search OR author LIKE @search
-       ORDER BY total_stock ASC
+       ORDER BY current_stock ASC
        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;
        SELECT COUNT(*) AS total FROM v_inventory_summary WHERE @search IS NULL OR title LIKE @search OR author LIKE @search;`
     );
@@ -122,7 +138,17 @@ export const createInventoryTransaction = async (payload: {
   note?: string;
   createdBy: number;
 }) => {
+  if(!Number.isSafeInteger(payload.quantity)||payload.quantity===0||
+    (payload.transactionType==='import'&&payload.quantity<0)||(payload.transactionType==='export'&&payload.quantity>0))
+    throw new AppError(400,'Nhập kho dùng số dương, xuất kho dùng số âm, số lượng phải khác 0');
   const pool = await getDb();
+  if(await usesRebuiltStoreSchema()){
+    try{await pool.request().input('BookId',sql.Int,payload.bookId).input('QuantityDelta',sql.Int,payload.quantity)
+      .input('TransactionType',sql.NVarChar(30),payload.transactionType==='export'?'adjustment':payload.transactionType)
+      .input('SupplierId',sql.Int,payload.supplierId??null).input('UnitCost',sql.Decimal(18,2),payload.importPrice??null)
+      .input('Note',sql.NVarChar(1000),payload.note??null).input('CreatedBy',sql.Int,payload.createdBy).execute('sp_AdjustInventory');return;
+    }catch(error){const n=(error as {number?:number}).number;if(n&&n>=50001&&n<=50003)throw new AppError(n===50002?404:400,(error as Error).message);throw error;}
+  }
   await pool
     .request()
     .input("p_book_id", sql.BigInt, payload.bookId)

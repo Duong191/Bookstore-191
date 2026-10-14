@@ -1,0 +1,10 @@
+import { Request,Response } from "express";
+import * as service from "../services/adminCategories.service";
+import { categoryIdSchema,categoryListSchema,categoryStatusSchema } from "../validators/categories.schemas";
+const id=(r:Request)=>categoryIdSchema.parse(r.params).id;
+export const list=async(req:Request,res:Response)=>{res.json(await service.listAdminCategories(categoryListSchema.parse(req.query).tree==='true'));};
+export const get=async(req:Request,res:Response)=>{res.json({item:await service.getAdminCategory(id(req))});};
+export const create=async(req:Request,res:Response)=>{res.status(201).json({item:await service.createCategory(req.body)});};
+export const update=async(req:Request,res:Response)=>{res.json({item:await service.updateCategory(id(req),req.body)});};
+export const status=async(req:Request,res:Response)=>{res.json({item:await service.updateCategory(id(req),categoryStatusSchema.parse(req.body))});};
+export const remove=async(req:Request,res:Response)=>{await service.deleteCategory(id(req));res.status(204).send();};

@@ -1,7 +1,7 @@
 /** Giữ đủ dữ liệu form khi gửi BE; không lấy dữ liệu form để giả lập kết quả đã lưu. */
 export function buildAdminBookPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  for (const key of ['title', 'author', 'publisher', 'description', 'language', 'format', 'featured', 'trending', 'isNew']) {
+  for (const key of ['title', 'author', 'publisher', 'description', 'language', 'format', 'featured', 'trending', 'isNew','isActive']) {
     if (payload[key] !== undefined) result[key] = payload[key];
   }
   for (const key of ['price', 'discount', 'stock', 'pages', 'rating', 'importPrice']) {

@@ -1,0 +1,77 @@
+// Các luồng SQL thật nằm trong transaction test, rollback toàn bộ dữ liệu thử.
+require('ts-node').register({transpileOnly:true});
+const assert=require('node:assert/strict'),Module=require('node:module'),fs=require('node:fs'),{randomUUID}=require('node:crypto');
+const db=require('../src/config/db'),sql=db.sql;let outer;
+class TestTransaction{async begin(){await new sql.Request(outer).query('SAVE TRANSACTION catalog_test');}async commit(){}async rollback(){await new sql.Request(outer).query('ROLLBACK TRANSACTION catalog_test');}}
+function TestRequest(tx){return new sql.Request(tx instanceof TestTransaction?outer:tx);}
+const adapter={sql:{...sql,Transaction:TestTransaction,Request:TestRequest},getDb:async()=>({request:()=>new sql.Request(outer)})};
+const load=Module._load;Module._load=function(name,parent,...args){if(name==='../config/db'&&/(adminCategories|category|book|cart|order|inventory|auth|rbac)\.service\.ts$/.test(parent.filename))return adapter;return load.call(this,name,parent,...args);};
+const categories=require('../src/services/adminCategories.service'),publicCategories=require('../src/services/category.service'),books=require('../src/services/book.service');
+const inventory=require('../src/services/inventory.service'),cart=require('../src/services/cart.service'),orders=require('../src/services/order.service'),auth=require('../src/services/auth.service');
+const {adminBookListSchema}=require('../src/validators/books.schemas');Module._load=load;
+const reject=(f,status)=>assert.rejects(f,e=>e.statusCode===status);
+(async()=>{try{
+  const pool=await db.getDb();await pool.request().batch(fs.readFileSync('category-management-compatibility.sql','utf8'));
+  outer=new sql.Transaction(pool);await outer.begin();await new sql.Request(outer).query('SET XACT_ABORT OFF');
+  const stem=`QA-${randomUUID().slice(0,8)}`;
+  const parent=await categories.createCategory({name:`${stem} Parent`,sortOrder:5});
+  const a=await categories.createCategory({name:`${stem} Child A`,parentId:parent.id});
+  const b=await categories.createCategory({name:`${stem} Child B`,parentId:parent.id});
+  assert.equal(a.parentId,parent.id);assert.equal((await categories.listAdminCategories(true)).items.find(c=>c.id===parent.id).children.length,2);
+  await reject(()=>categories.createCategory({name:'Duplicate slug',slug:parent.slug}),409);
+  await reject(()=>categories.updateCategory(Number(a.id),{parentId:a.id}),400);
+  await reject(()=>categories.updateCategory(Number(parent.id),{parentId:a.id}),400);
+  await reject(()=>categories.createCategory({name:'Too deep',parentId:a.id}),400);
+  const admin=(await new sql.Request(outer).query(`SELECT TOP 1 u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE r.name='admin' AND u.is_active=1 AND u.is_deleted=0`)).recordset[0];
+  assert.ok(admin);
+  const first=await books.createBook({title:`${stem} First`,author:'QA',categoryId:Number(a.id),price:100,stock:3,pages:123,images:['/img/qa.jpg'],tags:[stem]},Number(admin.id));
+  const second=await books.createBook({title:`${stem} Second`,author:'QA',categoryId:Number(b.id),price:200,stock:0});
+  const query=p=>adminBookListSchema.parse({parentCategoryId:parent.id,...p});
+  assert.equal((await books.listAdminBooks(query({}))).meta.total,2);
+  assert.equal((await books.listAdminBooks(query({categoryId:a.id}))).meta.total,1);
+  assert.equal((await books.listAdminBooks(query({stock:'out-of-stock'}))).meta.total,1);
+  assert.equal((await books.listAdminBooks(query({stock:'low-stock'}))).meta.total,1);
+  assert.equal((await books.listAdminBooks(query({limit:1,page:2,sort:'price-asc'}))).data[0].id,second.id);
+  assert.equal((await books.listBooks({categoryId:parent.id,page:1,limit:100})).meta.total,2);
+  await books.updateBook(Number(second.id),{isActive:false});
+  await reject(()=>books.getBookById(Number(second.id)),404);assert.equal((await books.getBookById(Number(second.id),true)).isActive,false);
+  assert.equal((await books.listAdminBooks(query({status:'inactive'}))).meta.total,1);
+  await reject(()=>categories.deleteCategory(Number(b.id)),409); // Sách ẩn vẫn chặn xóa danh mục.
+  await reject(()=>books.updateBook(Number(first.id),{stock:99}),400);
+  await categories.updateCategory(Number(parent.id),{isActive:false});
+  assert.equal((await publicCategories.listCategories()).some(c=>c.id===a.id),false);
+  assert.equal((await books.listBooks({categoryId:parent.id,page:1,limit:100})).meta.total,0);
+  await reject(()=>books.createBook({title:'Hidden category',author:'QA',categoryId:Number(a.id),price:1,stock:0}),400);
+  await categories.updateCategory(Number(parent.id),{isActive:true});
+  const detailed=(await publicCategories.listCategoriesDetailed()).find(c=>c.id===parent.id);
+  assert.equal(detailed.subCategories[0].link,`/shop?category=${a.id}`);
+  await inventory.createInventoryTransaction({bookId:Number(first.id),transactionType:'import',quantity:5,importPrice:25,createdBy:Number(admin.id)});
+  await inventory.createInventoryTransaction({bookId:Number(first.id),transactionType:'export',quantity:-2,createdBy:Number(admin.id)});
+  assert.equal((await books.getBookById(Number(first.id),true)).stock,6);
+  const logs=(await inventory.listInventoryTransactions({limit:500})).items.filter(i=>i.bookId===String(first.id));
+  assert.equal(logs.length,3);assert.ok(logs.some(i=>i.type==='export'&&i.quantity===2));
+  await reject(()=>inventory.createInventoryTransaction({bookId:Number(first.id),transactionType:'export',quantity:2,createdBy:Number(admin.id)}),400);
+  assert.ok((await inventory.listInventory({limit:100})).data.some(i=>Number(i.id)===Number(first.id)));
+  const email=`${randomUUID()}@catalog-test.invalid`,password=randomUUID();
+  const registered=await auth.register({email,password,firstName:'QA',lastName:'Catalog'});
+  const user=registered.user;
+  assert.equal(user.role,'user');assert.ok(registered.accessToken);assert.ok(registered.refreshToken);
+  await reject(()=>auth.login(email,'incorrect-password'),401);
+  await reject(()=>auth.register({email,password,firstName:'QA',lastName:'Duplicate'}),409);
+  assert.equal((await auth.login(email,password)).user.id,user.id);
+  assert.ok((await auth.refresh(registered.refreshToken)).accessToken);
+  await auth.logout(registered.refreshToken);
+  await cart.upsertCart(Number(user.id),null,[{bookId:Number(first.id),quantity:1}]);
+  const order=await orders.createOrder(Number(user.id),{paymentMethod:'cod',shippingName:'QA',shippingPhone:'0900000000',shippingAddress:'QA street',shippingCity:'QA city'});
+  assert.ok(order.orderId);await orders.updateOrderStatus(order.orderId,'cancelled','QA cancel',Number(admin.id));
+  assert.equal((await books.getBookById(Number(first.id),true)).stock,6);
+  await books.deleteBook(Number(first.id));await books.deleteBook(Number(second.id));
+  await reject(()=>categories.deleteCategory(Number(parent.id)),409); // Cha còn con active.
+  await categories.updateCategory(Number(a.id),{isActive:false});await categories.updateCategory(Number(b.id),{isActive:false});
+  await categories.deleteCategory(Number(parent.id));
+  assert.equal((await categories.listAdminCategories(false)).items.some(c=>[parent.id,a.id,b.id].includes(c.id)),false);
+  const deleted=(await new sql.Request(outer).input('id',sql.BigInt,Number(parent.id)).query('SELECT is_deleted FROM categories WHERE id=@id')).recordset[0];
+  assert.equal(deleted.is_deleted,true);
+  assert.equal((await new sql.Request(outer).input('id',sql.BigInt,order.orderId).query('SELECT COUNT(*) AS n FROM orders WHERE id=@id')).recordset[0].n,1);
+  console.log('PASS: category CRUD/tree/duplicate/depth/visibility/delete guards + admin book filters/status/pagination + inventory + register/login/refresh/logout + cart/order + history preservation');
+}catch(e){console.error('FAIL:',e.message);process.exitCode=1;}finally{if(outer)try{await outer.rollback();console.log('Catalog fixture ROLLBACK completed');}catch(e){console.error('Rollback:',e.message);process.exitCode=1;}await db.closeDb();}})();

@@ -9,7 +9,7 @@ export function useBooks() {
   const { data, loading, getBookById, refreshBooksFromApi, addBook, updateBook, deleteBook } = useBookstore();
 
   return {
-    books: data?.books ?? [],
+    books: (data?.books ?? []).filter(book=>book.isActive!==false&&book.categoryVisible!==false),
     categories: data?.categories ?? [],
     detailedCategories: data?.detailedCategories ?? [],
     loading,

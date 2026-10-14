@@ -22,6 +22,7 @@ import AdminBlogPage from './pages/admin/AdminBlogPage';
 import AdminBlogEditPage from './pages/admin/AdminBlogEditPage';
 import AdminInventoryPage from './pages/admin/AdminInventoryPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminCategoriesPage from './pages/admin/AdminCategoriesPage';
 
 export default function App() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="books" element={<AdminBooksPage />} />
+            <Route path="categories" element={<RequireAccountAdmin><AdminCategoriesPage/></RequireAccountAdmin>}/>
             <Route path="books/new" element={<AdminBookEditPage />} />
             <Route path="books/:id/edit" element={<AdminBookEditPage />} />
             <Route path="inventory" element={<AdminInventoryPage />} />

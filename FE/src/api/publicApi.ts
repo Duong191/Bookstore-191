@@ -75,6 +75,9 @@ export function mapBook(raw: RawBook): Book & {
     format: raw.format != null ? String(raw.format) : undefined,
     supportsTrending: raw.supportsTrending === true,
     supportsFormat: raw.supportsFormat === true,
+    isActive:raw.isActive===undefined?raw.is_active===undefined?true:Boolean(raw.is_active):Boolean(raw.isActive),
+    categoryParentId:raw.categoryParentId==null?null:String(raw.categoryParentId),
+    categoryVisible:raw.categoryVisible!==false,
     originalPrice: discount > 0 ? Math.round(price / (1 - discount / 100)) : undefined,
   };
 }
@@ -90,6 +93,16 @@ export async function getBooks<TBook>(params = 'page=1&limit=100'): Promise<TBoo
   const data = await httpRequest<ListResponse<RawBook>>(`/books?${params}`);
   // Chuẩn hóa từng dòng sách về model FE trước khi trả cho caller.
   return unwrapList(data).map((b) => mapBook(b) as unknown as TBook);
+}
+/** Tải đủ catalog theo metadata; shop không mất sách khi vượt trang đầu. */
+export async function getAllPublicBooks<TBook>():Promise<TBook[]> {
+  const books:TBook[]=[];
+  for(let page=1;page<=10000;page++){
+    const response=await httpRequest<{data:RawBook[];meta:{total:number}}>(`/books?page=${page}&limit=100`);
+    const rows=unwrapList(response);books.push(...rows.map(row=>mapBook(row) as unknown as TBook));
+    if(!rows.length||books.length>=response.meta.total)break;
+  }
+  return books;
 }
 
 /** Lấy danh mục cấp 1. */

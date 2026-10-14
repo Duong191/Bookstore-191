@@ -35,6 +35,7 @@ export default function AdminLayout() {
     const path = location.pathname;
     if (path.includes('/admin/dashboard')) return 'Dashboard';
     if (path.includes('/admin/books')) return 'Quản lý sách';
+    if (path.includes('/admin/categories')) return 'Quản lý danh mục';
     if (path.includes('/admin/inventory')) return 'Quản lý kho';
     if (path.includes('/admin/users')) return 'Quản lý tài khoản';
     if (path.includes('/admin/orders')) return 'Quản lý đơn hàng';
@@ -66,6 +67,7 @@ export default function AdminLayout() {
             <i className="fas fa-book"></i>
             <span>Quản lý Sách</span>
           </NavLink>
+          {currentUser?.role==='admin'&&<NavLink to="/admin/categories" className="admin-nav-item"><i className="fas fa-folder-tree"/><span>Quản lý danh mục</span></NavLink>}
           <NavLink to="/admin/inventory" className="admin-nav-item">
             <i className="fas fa-warehouse"></i>
             <span>Quản lý Kho</span>

@@ -2,12 +2,18 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, NavLink } from 'react-router-dom';
 import { useBookstore } from '../../context/BookstoreContext';
 import { formatPrice, discountedUnitPrice } from '../../utils/format';
-import { fetchBookById } from '../../api/publicApi';
+import {getAdminBookDetailRequest} from '../../api/adminBooksApi';
+import {useAdminCategories} from '../../hooks/useAdminCategories';
+import CategoryFormModal from '../../components/ui/CategoryFormModal';
+import './AdminCatalog.css';
 
 export default function AdminBookEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addBook, updateBook, showToast, data } = useBookstore();
+  const { addBook, updateBook, showToast, data,currentUser } = useBookstore();
+  const categories=useAdminCategories();
+  const [parentCategoryId,setParentCategoryId]=useState('');
+  const [quickCategory,setQuickCategory]=useState(false);
   const [loading, setLoading] = useState(!!id);
   const [loadError, setLoadError] = useState('');
   const [formError, setFormError] = useState('');
@@ -18,7 +24,7 @@ export default function AdminBookEditPage() {
     title: '',
     author: '',
     publisher: '',
-    categoryId: '1',
+    categoryId: '',
     publishYear: '',
     price: '',
     discount: '0',
@@ -35,9 +41,10 @@ export default function AdminBookEditPage() {
     bestSeller: false,
     trending: false,
     featured: false,
-    rating: '5',
+    rating: '0',
     reviews: '0',
     salesCount: '0',
+    isActive:true,
   });
 
   const isEdit = !!id;
@@ -49,7 +56,7 @@ export default function AdminBookEditPage() {
     let cancelled = false;
     setLoading(true);
     setLoadError('');
-    fetchBookById(id).then((result) => {
+    getAdminBookDetailRequest(localStorage.getItem('bookstoreAccessToken')||'',id).then((result) => {
       if (cancelled) return;
       const book: any = result;
         const imagesStr = Array.isArray(book.images) ? book.images.join(', ') : (book.image || '');
@@ -82,7 +89,9 @@ export default function AdminBookEditPage() {
           rating: String(book.rating ?? '5'),
           reviews: String(book.reviews || book.reviewCount || '0'),
           salesCount: String(book.salesCount || book.soldCount || '0'),
+          isActive:book.isActive!==false,
         });
+      setParentCategoryId(book.categoryParentId||String(book.categoryId));
       setCapabilities({ trending: book.supportsTrending === true, format: book.supportsFormat === true });
     }).catch((error) => {
       if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Không thể tải thông tin sách');
@@ -107,7 +116,7 @@ export default function AdminBookEditPage() {
       publishYear: formData.publishYear ? parseInt(formData.publishYear) : null,
       price: parseFloat(formData.price),
       discount: parseFloat(formData.discount),
-      stock: parseInt(formData.stock),
+      ...(!isEdit?{stock:parseInt(formData.stock)}:{}),
       description: formData.description,
       /** Luôn gửi để backend ghi vào `book_images` và không mất sau khi tải lại từ API. */
       images: imagesArray,
@@ -121,11 +130,7 @@ export default function AdminBookEditPage() {
       bestSeller: formData.bestSeller,
       ...(supportsTrending ? { trending: formData.trending } : {}),
       featured: formData.featured,
-      rating: parseFloat(formData.rating),
-      reviews: parseInt(formData.reviews),
-      reviewCount: parseInt(formData.reviews),
-      salesCount: parseInt(formData.salesCount),
-      soldCount: parseInt(formData.salesCount),
+      isActive:formData.isActive,
     };
 
     savingRef.current = true;
@@ -161,7 +166,7 @@ export default function AdminBookEditPage() {
   if (loadError) return <div role="alert">{loadError} <NavLink to="/admin/books">Về danh sách sách</NavLink></div>;
 
   return (
-    <form className="admin-form" onSubmit={onSubmit}>
+    <><form className="admin-form" onSubmit={onSubmit}>
       {formError && <div role="alert" style={{ color: '#991b1b', background: '#fef2f2', padding: 12, marginBottom: 16 }}>{formError}</div>}
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {/* Basic Info */}
@@ -198,22 +203,21 @@ export default function AdminBookEditPage() {
         </div>
       </div>
 
+      {categories.error&&<p className="catalog-error" role="alert">{categories.error} <button type="button" onClick={()=>void categories.reload().catch(()=>{})}>Tải lại danh mục</button></p>}
+      <div className="catalog-category-select">
+        <div><label className="form-label required" htmlFor="book-parent-category">Danh mục cha</label>
+          <select id="book-parent-category" className="form-select" required disabled={categories.loading} value={parentCategoryId}
+            onChange={e=>{setParentCategoryId(e.target.value);setFormData({...formData,categoryId:e.target.value});}}>
+            <option value="">-- Chọn danh mục cha --</option>{categories.categories.filter(c=>!c.parentId&&(c.isVisible||c.id===parentCategoryId)).map(c=><option key={c.id} value={c.id}>{c.name}{!c.isVisible?' (đang ẩn)':''}</option>)}
+          </select></div>
+        <div><label className="form-label" htmlFor="book-child-category">Danh mục con</label>
+          <select id="book-child-category" className="form-select" disabled={!parentCategoryId||categories.loading} value={formData.categoryId===parentCategoryId?'':formData.categoryId}
+            onChange={e=>setFormData({...formData,categoryId:e.target.value||parentCategoryId})}>
+            <option value="">Gán trực tiếp vào danh mục cha</option>{categories.categories.filter(c=>c.parentId===parentCategoryId&&(c.isVisible||c.id===formData.categoryId)).map(c=><option key={c.id} value={c.id}>{c.name}{!c.isVisible?' (đang ẩn)':''}</option>)}
+          </select></div>
+        {currentUser?.role==='admin'&&<button type="button" className="btn-admin btn-admin-success" disabled={categories.loading||saving} onClick={()=>setQuickCategory(true)}>+ Thêm danh mục</button>}
+      </div>
       <div className="form-row">
-        <div className="form-group">
-          <label className="form-label required">Danh mục</label>
-          <select
-            className="form-select"
-            value={formData.categoryId}
-            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-            required
-          >
-            {(data?.categories || []).map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="form-group">
           <label className="form-label">Năm xuất bản</label>
           <input
@@ -419,7 +423,7 @@ export default function AdminBookEditPage() {
       {/* Rating */}
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Đánh giá (0-5)</label>
+          <label className="form-label">Đánh giá (0-5, tự cập nhật)</label>
           <input
             type="number"
             className="form-input"
@@ -427,42 +431,52 @@ export default function AdminBookEditPage() {
             max="5"
             step="0.1"
             value={formData.rating}
+            readOnly
             onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
           />
         </div>
         <div className="form-group">
-          <label className="form-label">Số lượt đánh giá</label>
+          <label className="form-label">Số lượt đánh giá (chỉ đọc)</label>
           <input
             type="number"
             className="form-input"
             min="0"
             value={formData.reviews}
+            readOnly
             onChange={(e) => setFormData({ ...formData, reviews: e.target.value })}
           />
         </div>
       </div>
 
       <div className="form-group">
-        <label className="form-label">Số lượng đã bán</label>
+        <label className="form-label">Số lượng đã bán (chỉ đọc)</label>
         <input
           type="number"
           className="form-input"
           min="0"
           value={formData.salesCount}
+          readOnly
           onChange={(e) => setFormData({ ...formData, salesCount: e.target.value })}
         />
       </div>
 
       {/* Form Actions */}
+      <div className="form-group"><label className="form-label" htmlFor="book-active-status">Trạng thái sách</label>
+        <select id="book-active-status" className="form-select" value={formData.isActive?'active':'inactive'} onChange={e=>setFormData({...formData,isActive:e.target.value==='active'})}>
+          <option value="active">Hiển thị trên cửa hàng</option><option value="inactive">Ẩn khỏi cửa hàng</option></select></div>
       <div className="form-actions">
         <NavLink to="/admin/books" className="btn-admin btn-admin-secondary">
           <i className="fas fa-times"></i> Hủy
         </NavLink>
-        <button type="submit" className="btn-admin btn-admin-primary" disabled={saving}>
+        <button type="submit" className="btn-admin btn-admin-primary" disabled={saving||categories.loading||!!categories.error||!formData.categoryId}>
           <i className="fas fa-save"></i> {saving ? 'Đang lưu...' : 'Lưu'}
         </button>
       </div>
       </fieldset>
-    </form>
+    </form>{quickCategory&&<CategoryFormModal categories={categories.categories} parentId={parentCategoryId||null} busy={categories.busy}
+      onClose={()=>setQuickCategory(false)} onSave={categories.create} onSaved={item=>{
+        setQuickCategory(false);if(item.isVisible){setParentCategoryId(item.parentId||item.id);setFormData(prev=>({...prev,categoryId:item.id}));}
+        showToast(item.isVisible?'Đã tạo và chọn danh mục mới':'Đã tạo danh mục đang ẩn; hãy hiện danh mục trước khi gán sách','success');
+      }}/> }</>
   );
 }

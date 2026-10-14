@@ -71,6 +71,9 @@ export interface Book {
   format?: string;
   supportsTrending?: boolean;
   supportsFormat?: boolean;
+  isActive?: boolean;
+  categoryParentId?: string | null;
+  categoryVisible?: boolean;
   isbn?: string;
   publisher?: string;
   publishDate?: string;
@@ -89,6 +92,15 @@ export interface Category {
   name: string;
   slug: string;
   icon?: string;
+  parentId?: string | null;
+  description?: string;
+  isActive?: boolean;
+  isVisible?: boolean;
+  sortOrder?: number;
+  bookCount?: number;
+}
+export interface AdminCategory extends Category {
+  parentId:string|null;description:string;isActive:boolean;isVisible:boolean;sortOrder:number;bookCount:number;children?:AdminCategory[];
 }
 
 export interface DetailedCategory {
@@ -197,6 +209,7 @@ export interface Toast {
 }
 
 export interface BookstoreContextValue {
+  refreshCategoriesFromApi: () => Promise<void>;
   data: BookstoreData | null;
   loading: boolean;
   session: Session | null;

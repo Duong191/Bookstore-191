@@ -37,7 +37,7 @@ import { createBookRequest, deleteBookRequest, updateBookRequest } from '../api/
 import { createBlogRequest, deleteBlogRequest, updateBlogRequest } from '../api/blogsApi';
 import { createInventoryLogRequest, getInventoryLogsRequest } from '../api/inventoryApi';
 import { getCartRequest, updateCartRequest } from '../api/cartApi';
-import { getBooks } from '../api/publicApi';
+import { getAllPublicBooks,getCategories,getDetailedCategories } from '../api/publicApi';
 import { bootstrapFromBackend } from '../services/dataBootstrapService';
 import { buildAdminBookPayload } from '../services/adminBookPayload';
 
@@ -353,7 +353,7 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
   // Nhóm helper dữ liệu cơ bản (books/cart)
   // ==============================
   const getBookById = useCallback(
-    (id: string) => data?.books?.find((b) => b && String(b.id) === String(id)),
+    (id: string) => data?.books?.find((b) => b && b.isActive!==false&&b.categoryVisible!==false&&String(b.id) === String(id)),
     [data]
   );
 
@@ -650,12 +650,18 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
   // ==============================
   const refreshBooksFromApi = useCallback(async () => {
     try {
-      const books = await getBooks<Book>('page=1&limit=500');
+      const books = await getAllPublicBooks<Book>();
       persist((prev) => (prev ? { ...prev, books } : prev));
     } catch {
       /* ignore */
     }
   }, [persist]);
+
+  const refreshCategoriesFromApi=useCallback(async()=>{
+    const [categories,detailedCategories,books]=await Promise.all([getCategories<BookstoreData['categories'][number]>(),
+      getDetailedCategories<BookstoreData['detailedCategories'][number]>(),getAllPublicBooks<Book>()]);
+    persist(prev=>({...prev,categories,detailedCategories,books}));
+  },[persist]);
 
   const refreshInventoryLogsFromApi = useCallback(async () => {
     const token = getAccessToken();
@@ -963,6 +969,7 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
       updateOrder,
       confirmOrderReceived,
       refreshBooksFromApi,
+      refreshCategoriesFromApi,
       refreshInventoryLogsFromApi,
       dedupeCartLines,
       addBook,
@@ -1000,6 +1007,7 @@ export function BookstoreProvider({ children }: { children: ReactNode }) {
       updateOrder,
       confirmOrderReceived,
       refreshBooksFromApi,
+      refreshCategoriesFromApi,
       refreshInventoryLogsFromApi,
       dedupeCartLines,
       addBook,

@@ -3,6 +3,7 @@ import { NavLink, useSearchParams } from 'react-router-dom';
 import { useBooks } from '../hooks/useBooks';
 import BookCard from '../components/ui/BookCard';
 import { filterBooks, isFeaturedBook, isMarkedNew, searchBooks, sortBooks } from '../services/booksService';
+import {categoryScope} from '../services/categoryTree';
 
 /** Tối đa 4 sách / 1 hàng; 3 hàng / trang → 12 sách mỗi trang */
 const SHOP_COLS = 4;
@@ -70,14 +71,15 @@ export default function ShopPage() {
   }, [selectedCategory, categories]);
 
   const filtered = useMemo(() => {
-    let list = filterBooks(books, resolvedCategoryId, selectedPrice, selectedRating);
+    let list = filterBooks(books, 'all', selectedPrice, selectedRating);
+    if(resolvedCategoryId!=='all'){const scope=categoryScope(categories,resolvedCategoryId);list=list.filter(book=>scope.has(String(book.categoryId)));}
     if (listFilter === 'featured') list = list.filter(isFeaturedBook);
     if (listFilter === 'new') list = list.filter(isMarkedNew);
     if (search) list = searchBooks(list, search);
     const effectiveSort =
       listFilter === 'new' && sortBy === 'default' ? 'newest' : sortBy;
     return sortBooks(list, effectiveSort);
-  }, [books, resolvedCategoryId, selectedPrice, selectedRating, listFilter, search, sortBy]);
+  }, [books,categories, resolvedCategoryId, selectedPrice, selectedRating, listFilter, search, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / BOOKS_PER_PAGE));
   const currentPage = Math.min(Math.max(1, Number.isFinite(pageParam) ? pageParam : 1), totalPages);

@@ -8,7 +8,8 @@
  * Thiết kế: pure function, nhận mảng sách + tham số → trả mảng mới.
  * Không gọi API ở đây (việc đó nằm ở `src/api/*` và `BookstoreContext`).
  */
-import type { Book } from '../types/bookstore.types';
+import type { Book,Category } from '../types/bookstore.types';
+import {categoryScope} from './categoryTree';
 
 /** categoryId / category từ API hoặc seed có thể là string hoặc number — chuẩn hóa để lọc khớp sidebar. */
 export function normalizedBookCategoryId(book: Book): string {
@@ -144,17 +145,12 @@ export function calculateRankingScore(book: BookWithExtras): number {
   return salesScore + ratingScore + reviewScore + trendingBonus + bestsellerBonus + newBonus;
 }
 
-export function getBestSellersByCategory(books: BookWithExtras[], categoryId: string): BookWithExtras[] {
+export function getBestSellersByCategory(books: BookWithExtras[], categoryId: string,categories:Category[]=[]): BookWithExtras[] {
   let list = [...books];
 
-  if (categoryId === 'foreign') {
-    list = list.filter((book) => book.language && book.language.toLowerCase().includes('english'));
-  } else if (categoryId === 'other') {
-    const mainCategories = ['1', '2', '3', '4', '5', '6', '7', '8'];
-    list = list.filter((book) => !mainCategories.includes(normalizedBookCategoryId(book)));
-  } else if (categoryId !== 'all') {
-    const want = String(categoryId);
-    list = list.filter((book) => normalizedBookCategoryId(book) === want);
+  if (categoryId !== 'all') {
+    const scope=categoryScope(categories,String(categoryId));
+    list = list.filter((book) => scope.has(normalizedBookCategoryId(book)));
   }
 
   return list.sort((a, b) => calculateRankingScore(b) - calculateRankingScore(a));

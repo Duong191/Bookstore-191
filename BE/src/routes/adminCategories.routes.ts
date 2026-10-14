@@ -1,0 +1,16 @@
+import {Router} from "express";
+import {z} from "zod";
+import * as c from "../controllers/adminCategories.controller";
+import {categoryIdSchema,categoryListSchema,categoryStatusSchema,createCategorySchema,updateCategorySchema} from "../validators/categories.schemas";
+import {validateRequest} from "../middlewares/validateRequest";
+import {checkPermission} from "../middlewares/checkPermission";
+import {asyncHandler} from "../utils/asyncHandler";
+const router=Router();
+router.get('/',validateRequest(z.object({query:categoryListSchema})),asyncHandler(c.list));
+router.get('/:id',validateRequest(z.object({params:categoryIdSchema})),asyncHandler(c.get));
+router.use(checkPermission('admin'));
+router.post('/',validateRequest(z.object({body:createCategorySchema})),asyncHandler(c.create));
+router.patch('/:id',validateRequest(z.object({params:categoryIdSchema,body:updateCategorySchema})),asyncHandler(c.update));
+router.patch('/:id/status',validateRequest(z.object({params:categoryIdSchema,body:categoryStatusSchema})),asyncHandler(c.status));
+router.delete('/:id',validateRequest(z.object({params:categoryIdSchema})),asyncHandler(c.remove));
+export default router;

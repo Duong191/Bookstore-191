@@ -4,6 +4,7 @@ import { AppError } from "../utils/appError";
 import { parsePagination } from "../utils/pagination";
 import type { AuthUser } from "../types";
 import { usesRebuiltStoreSchema } from "../utils/storeSchema";
+import {visibleCategorySql} from "../utils/categoryVisibility";
 
 function isOrderAdmin(auth: AuthUser): boolean {
   return (
@@ -74,6 +75,11 @@ export const createOrder = async (
   }
 ) => {
   const pool = await getDb();
+  const unavailable=await pool.request().input('userId',sql.BigInt,userId).query(`SELECT TOP 1 b.id FROM carts cart
+    JOIN cart_items ci ON ci.cart_id=cart.id JOIN books b ON b.id=ci.book_id JOIN categories c ON c.id=b.category_id
+    WHERE cart.user_id=@userId ${await usesRebuiltStoreSchema()?"AND cart.status='active'":""}
+      AND (b.is_deleted=1 OR b.is_active=0 OR NOT (${visibleCategorySql()}))`);
+  if(unavailable.recordset.length)throw new AppError(400,'Có sách đã ngừng hiển thị trong giỏ. Vui lòng cập nhật giỏ hàng.');
   if (await usesRebuiltStoreSchema()) {
     const paymentMethod = payload.paymentMethod === "bank" ? "bank_transfer" : payload.paymentMethod;
     if (!["cod", "bank_transfer"].includes(paymentMethod)) throw new AppError(400, "Phương thức thanh toán chưa được hỗ trợ");

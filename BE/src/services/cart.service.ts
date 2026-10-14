@@ -2,6 +2,7 @@
 import { getDb, sql } from "../config/db";
 import { AppError } from "../utils/appError";
 import { usesRebuiltStoreSchema } from "../utils/storeSchema";
+import {visibleCategorySql} from "../utils/categoryVisibility";
 
 const getOrCreateCartId = async (userId: number | null, sessionId: string | null): Promise<number> => {
   const pool = await getDb();
@@ -63,7 +64,8 @@ export const upsertCart = async (userId: number | null, sessionId: string | null
     for (const item of items) {
       const stock = await new sql.Request(tx)
         .input("bookId", sql.BigInt, item.bookId)
-        .query(`SELECT TOP 1 ${rebuilt ? "stock_quantity" : "stock"} AS stock FROM books WHERE id=@bookId AND is_deleted=0 AND is_active=1`);
+        .query(`SELECT TOP 1 b.${rebuilt ? "stock_quantity" : "stock"} AS stock FROM books b JOIN categories c ON c.id=b.category_id
+          WHERE b.id=@bookId AND b.is_deleted=0 AND b.is_active=1 AND ${visibleCategorySql()}`);
       if (!stock.recordset.length) throw new AppError(404, `Book ${item.bookId} not found`);
       if (item.quantity > Number(stock.recordset[0].stock)) throw new AppError(400, `Book ${item.bookId} out of stock`);
 

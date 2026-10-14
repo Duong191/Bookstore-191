@@ -9,7 +9,8 @@ import { checkPermission } from "../middlewares/checkPermission";
 import { validateRequest } from "../middlewares/validateRequest";
 import { asyncHandler } from "../utils/asyncHandler";
 import adminUsersRoutes from "./adminUsers.routes";
-import { bookIdSchema, createBookSchema, updateBookSchema } from "../validators/books.schemas";
+import { bookIdSchema, createBookSchema, updateBookSchema,adminBookListSchema,bookStatusSchema } from "../validators/books.schemas";
+import adminCategoriesRoutes from "./adminCategories.routes";
 
 const router = Router();
 router.use(authMiddleware);
@@ -17,6 +18,10 @@ router.use(checkPermission(["admin", "staff"]));
 
 // Quản lý tài khoản chỉ dành cho ADMIN, STAFF không được truy cập.
 router.use("/users", checkPermission("admin"), adminUsersRoutes);
+router.use('/categories',adminCategoriesRoutes);
+router.get('/books',validateRequest(z.object({query:adminBookListSchema})),asyncHandler(bookController.listAdminBooks));
+router.get('/books/:id',validateRequest(z.object({params:bookIdSchema})),asyncHandler(bookController.getAdminBook));
+router.patch('/books/:id/status',validateRequest(z.object({params:bookIdSchema,body:bookStatusSchema})),asyncHandler(bookController.updateBook));
 
 router.get("/stats", asyncHandler(adminStatsController.getAdminStats));
 

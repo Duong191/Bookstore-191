@@ -12,6 +12,8 @@
     "test:admin-users:db": "node tests/adminUsers.integration.cjs",
     "test:checkout:db": "node tests/checkout.integration.cjs",
     "test:books:db": "node tests/books.integration.cjs",
+    "test:catalog:db":"node tests/catalog.integration.cjs",
+    "test:catalog":"node --test tests/catalog.routes.test.cjs",
     "test:db": "ts-node-dev --exit-child --transpile-only src/scripts/testDbConnection.ts",
     "seed:recovered": "ts-node-dev --exit-child --transpile-only src/scripts/applyRecoveredSeed.ts"
   },

@@ -1,15 +1,21 @@
 import { useState, useMemo, FormEvent, useEffect } from 'react';
 import { useBookstore } from '../../context/BookstoreContext';
 import { formatDateTime, formatPrice } from '../../utils/format';
+import {getAllAdminBooksRequest} from '../../api/adminBooksApi';
+import type {Book} from '../../types/bookstore.types';
 
 export default function AdminInventoryPage() {
-  const { data, getBookById, getUserById, addInventoryLog, getInventoryLogs, refreshInventoryLogsFromApi } =
+  const { data, getUserById, addInventoryLog, getInventoryLogs, refreshInventoryLogsFromApi,showToast } =
     useBookstore();
 
   useEffect(() => {
     void refreshInventoryLogsFromApi();
   }, [refreshInventoryLogsFromApi]);
-  const books = data?.books || [];
+  const [books,setBooks]=useState<Book[]>([]);
+  useEffect(()=>{let cancelled=false;getAllAdminBooksRequest(localStorage.getItem('bookstoreAccessToken')||'')
+    .then(items=>{if(!cancelled)setBooks(items);}).catch(err=>{if(!cancelled)showToast(err instanceof Error?err.message:'Không thể tải danh sách kho','error');});
+    return()=>{cancelled=true;};},[data?.books,showToast]);
+  const getBookById=(id:string)=>books.find(book=>book.id===String(id));
   const [showImportForm, setShowImportForm] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'import' | 'export'>('all');
   const [filterBookId, setFilterBookId] = useState('all');

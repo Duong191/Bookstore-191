@@ -7,9 +7,7 @@ import { formatPrice, fixImagePath } from '../utils/format';
 export default function BestsellerRankingPage() {
   const { data, loading } = useBookstore();
   const [category, setCategory] = useState('all');
-  const books = data?.books || [];
-
-  const ranking = useMemo(() => getBestSellersByCategory(books, category), [books, category]);
+  const ranking = useMemo(() => getBestSellersByCategory(data?.books || [], category,data?.categories||[]), [data?.books, category,data?.categories]);
 
   if (loading) {
     return <div className="container" style={{ padding: 60 }}>Đang tải…</div>;
@@ -23,14 +21,7 @@ export default function BestsellerRankingPage() {
           <label>Danh mục: </label>
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="all">Tất cả</option>
-            <option value="1">Văn học</option>
-            <option value="2">Kinh tế</option>
-            <option value="3">Khoa học</option>
-            <option value="4">Lịch sử</option>
-            <option value="5">Thiếu nhi</option>
-            <option value="6">Ngoại ngữ</option>
-            <option value="7">Tâm lý học</option>
-            <option value="8">Công nghệ</option>
+            {(data?.categories||[]).map(c=><option key={c.id} value={c.id}>{c.parentId?'— ':''}{c.name}</option>)}
           </select>
         </div>
         <div style={{ marginTop: 40 }}>
